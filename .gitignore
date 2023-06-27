@@ -1,6 +1,12 @@
 # Visual Studio 2015 user specific files
 .vs/
 
+# Rider ignored files
+/.idea.TacticalRPG.iml
+/modules.xml
+/projectSettingsUpdater.xml
+/contentModel.xml
+
 # Compiled Object files
 *.slo
 *.lo
