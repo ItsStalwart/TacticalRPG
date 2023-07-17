@@ -9,45 +9,55 @@
 /**
  * 
  */
-UCLASS()
+UCLASS(BlueprintType, Blueprintable)
 class TACTICALRPG_API UGridData : public UDataAsset
 {
+	GENERATED_BODY()
 public:
-	[[nodiscard]] const FVector& GetGridSize() const
+
+	const FVector& GetGridSize() const
 	{
 		return GridSize;
 	}
 
-	[[nodiscard]] const TSoftObjectPtr<UStaticMesh>& GetGridMesh() const
+	const FIntVector2& GetGridDimension() const
+	{
+		return GridDimension;
+	}
+	
+	const TSoftObjectPtr<UStaticMesh>& GetGridMesh() const
 	{
 		return GridMesh;
 	}
-
-	[[nodiscard]] const TSoftObjectPtr<UMaterialInstance>& GetMeshMaterial() const
+	
+	const TSoftObjectPtr<UMaterialInstance>& GetMeshMaterial() const
 	{
 		return MeshMaterial;
 	}
-
-	[[nodiscard]] const TSoftObjectPtr<UStaticMesh>& GetTileMesh() const
+	
+	const TSoftObjectPtr<UStaticMesh>& GetTileMesh() const
 	{
 		return TileMesh;
 	}
-
-	[[nodiscard]] const TSoftObjectPtr<UMaterialInstance>& GetTileBorderMaterial() const
+	
+	const TSoftObjectPtr<UMaterialInstance>& GetTileBorderMaterial() const
 	{
 		return TileBorderMaterial;
 	}
-
-	[[nodiscard]] const TSoftObjectPtr<UMaterialInstance>& GetTileFilledMaterial() const
+	
+	const TSoftObjectPtr<UMaterialInstance>& GetTileFilledMaterial() const
 	{
 		return TileFilledMaterial;
 	}
 
 private:
-	GENERATED_BODY()
+	
 
 	UPROPERTY(EditDefaultsOnly)
 	FVector GridSize{0,0,0};
+
+	UPROPERTY(EditDefaultsOnly)
+	FIntVector2 GridDimension{1,1};
 
 	UPROPERTY(EditDefaultsOnly)
 	TSoftObjectPtr<UStaticMesh> GridMesh{nullptr};
