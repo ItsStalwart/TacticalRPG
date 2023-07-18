@@ -3,6 +3,8 @@
 
 #include "GridActor.h"
 #include "GridData.h"
+#include "GridModifierVolume.h"
+#include "GridUtilities.h"
 #include "MathUtil.h"
 #include "Components/InstancedStaticMeshComponent.h"
 #include "Kismet/KismetSystemLibrary.h"
@@ -28,6 +30,16 @@ void AGridActor::BeginPlay()
 {
 	Super::BeginPlay();
 	
+}
+
+void AGridActor::RegenerateEnvironmentGrid()
+{
+	SpawnGridAt(GetActorLocation(), true, true);
+}
+
+void AGridActor::RegenerateDefaultGrid()
+{
+	SpawnGridAt(GetActorLocation(), false, true);
 }
 
 void AGridActor::SpawnGridAt(FVector SpawnLocation, bool bUseEnvironment, bool bDestroyIfExists)
@@ -61,32 +73,59 @@ void AGridActor::SpawnGridAt(FVector SpawnLocation, bool bUseEnvironment, bool b
 				if(bSpawnTile)
 				{
 					TileTransform = FTransform{NewLocation-GetActorLocation()+FVector{0,0,1}};
-					InstancedStaticMeshComponent->AddInstance(TileTransform);
+					AddTileAt(TileTransform, {i,j});
 				}
 				
 				continue;
 			}
 			TileTransform = FTransform{TileLocation};
-			InstancedStaticMeshComponent->AddInstance(TileTransform);
+			AddTileAt(TileTransform, {i,j});
 		}
 	}
 }
 
-void AGridActor::DestroyGrid() const
+void AGridActor::DestroyGrid()
 {
 	InstancedStaticMeshComponent->ClearInstances();
+	GridIndexToArrayIndex.Empty();
 }
 
-bool AGridActor::TraceForGround(FVector TraceStartLocation, FVector& TraceHitLocation)
+bool AGridActor::TraceForGround(FVector TraceStartLocation, FVector& TraceHitLocation) const
 {
 	TArray<FHitResult> TraceHits{};
 	constexpr float TraceRadius = 50.f;
-	const bool bHit = UKismetSystemLibrary::SphereTraceMulti(GetWorld(), TraceStartLocation, TraceStartLocation-FVector{0,0,1000}, TraceRadius, UEngineTypes::ConvertToTraceType(ECC_GameTraceChannel1), false, TArray<AActor*>{}, EDrawDebugTrace::ForDuration, TraceHits, true );
+	const bool bHit = UKismetSystemLibrary::SphereTraceMulti(GetWorld(), TraceStartLocation, TraceStartLocation-FVector{0,0,1000}, TraceRadius, UEngineTypes::ConvertToTraceType(ECC_GameTraceChannel1), false, TArray<AActor*>{}, EDrawDebugTrace::None, TraceHits, true );
 	if(bHit)
 	{
+		const auto* ModifierVolume = Cast<AGridModifierVolume>(TraceHits[0].GetActor());
+		if(ModifierVolume != nullptr)
+		{
+			if(ModifierVolume->DoesBlockAllMovement())
+			{
+				return false;
+			}
+			//TODO:Set other movement types behavior
+		}
 		TraceHitLocation = TraceHits[0].Location - FVector(0,0, TraceRadius);
 	}
 	return bHit;
+}
+
+void AGridActor::AddTileAt(const FTransform& TileTransform, const FIntVector2& GridIndex)
+{
+	GridIndexToArrayIndex.Add({GridIndex.X,GridIndex.Y}, InstancedStaticMeshComponent->GetInstanceCount());
+	InstancedStaticMeshComponent->AddInstance(TileTransform);
+}
+
+bool AGridActor::RemoveTileAt(const FIntVector2& GridIndexToRemove)
+{
+	if(!GridIndexToArrayIndex.Contains(GridIndexToRemove))
+	{
+		return false;
+	}
+	const int TargetIndex = GridIndexToArrayIndex.FindAndRemoveChecked(GridIndexToRemove);
+	InstancedStaticMeshComponent->RemoveInstance(TargetIndex);
+	return true;
 }
 
 // Called every frame
