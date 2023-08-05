@@ -13,5 +13,8 @@ UCLASS()
 class TACTICALRPG_API ATacticalBattleController final : public APlayerController
 {
 	GENERATED_BODY()
+
+private:
+	bool bUseCursor {false};
 	
 };

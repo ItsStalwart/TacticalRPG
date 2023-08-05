@@ -15,11 +15,6 @@ class TACTICALRPG_API UGridData : public UDataAsset
 	GENERATED_BODY()
 public:
 
-	const FVector& GetGridSize() const
-	{
-		return GridSize;
-	}
-
 	const FIntVector2& GetGridDimension() const
 	{
 		return GridDimension;
@@ -44,18 +39,7 @@ public:
 	{
 		return TileBorderMaterial;
 	}
-	
-	const TSoftObjectPtr<UMaterialInstance>& GetTileFilledMaterial() const
-	{
-		return TileFilledMaterial;
-	}
-
 private:
-	
-
-	UPROPERTY(EditDefaultsOnly)
-	FVector GridSize{0,0,0};
-
 	UPROPERTY(EditDefaultsOnly)
 	FIntVector2 GridDimension{1,1};
 
@@ -70,7 +54,4 @@ private:
 
 	UPROPERTY(EditDefaultsOnly)
 	TSoftObjectPtr<UMaterialInstance> TileBorderMaterial{nullptr};
-
-	UPROPERTY(EditDefaultsOnly)
-	TSoftObjectPtr<UMaterialInstance> TileFilledMaterial{nullptr};
 };

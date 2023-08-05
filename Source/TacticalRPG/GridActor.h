@@ -13,6 +13,14 @@ struct FTileData
 		
 };
 
+UENUM(BlueprintType, meta=(Bitflags, UseEnumValuesAsMaskValuesInEditor="true"))
+enum class ETileState
+{
+	None=0 UMETA(Hidden),
+	Hovered = 0 << 1,
+	Selected = 1 << 1,
+};
+
 UCLASS()
 class TACTICALRPG_API AGridActor : public AActor
 {
@@ -21,6 +29,9 @@ class TACTICALRPG_API AGridActor : public AActor
 public:
 	// Sets default values for this actor's properties
 	AGridActor();
+
+	FIntVector2& GetSelectedTileIndex() {return SelectedTileIndex;};
+	
 
 protected:
 	// Called when the game starts or when spawned
@@ -49,10 +60,18 @@ protected:
 	UFUNCTION(BlueprintCallable)
 	bool TraceForGround(FVector TraceStartLocation, FVector& TraceHitLocation) const;
 
+	
+
 private:
-	TMap<FIntVector2, int> GridIndexToArrayIndex{};
+	TMap<FIntVector2, int> GridIndexToInstanceIndex{};
 	void AddTileAt(const FTransform& TileTransform, const FIntVector2& GridIndex);
 	bool RemoveTileAt(const FIntVector2& GridIndexToRemove);
+	
+	void HighlightTile(int TargetTile);
+	void UnlightTile(int TargetTile);
+	FIntVector2 GetTileIndexByCursorPosition(int PlayerControllerIndex) const;
+
+	FIntVector2 SelectedTileIndex{0,0};
 
 public:
 	// Called every frame
