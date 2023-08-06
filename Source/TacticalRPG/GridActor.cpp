@@ -25,7 +25,7 @@ AGridActor::AGridActor()
 	if(SetGridData != nullptr)
 	{
 		InstancedStaticMeshComponent->SetStaticMesh(SetGridData->GetTileMesh().LoadSynchronous());
-		InstancedStaticMeshComponent->GetStaticMesh()->SetMaterial(0, SetGridData->GetTileBorderMaterial().LoadSynchronous());
+		//InstancedStaticMeshComponent->GetStaticMesh()->SetMaterial(0, SetGridData->GetTileBorderMaterial().LoadSynchronous());
 	}
 }
 
@@ -61,7 +61,7 @@ void AGridActor::SpawnGridAt(FVector SpawnLocation, bool bUseEnvironment, bool b
 		DestroyGrid();
 	}
 	InstancedStaticMeshComponent->SetStaticMesh(SetGridData->GetTileMesh().LoadSynchronous());
-	InstancedStaticMeshComponent->GetStaticMesh()->SetMaterial(0, SetGridData->GetTileBorderMaterial().LoadSynchronous());
+	//InstancedStaticMeshComponent->GetStaticMesh()->SetMaterial(0, SetGridData->GetTileBorderMaterial().LoadSynchronous());
 	
 	const FIntVector2 GridDimension = SetGridData->GetGridDimension();
 	const float GridStep = InstancedStaticMeshComponent->GetStaticMesh()->GetBoundingBox().GetSize().X;
@@ -136,12 +136,12 @@ bool AGridActor::RemoveTileAt(const FIntVector2& GridIndexToRemove)
 
 void AGridActor::HighlightTile(int TargetTile)
 {
-	InstancedStaticMeshComponent->SetCustomDataValue(TargetTile, 0, 1);
+	InstancedStaticMeshComponent->SetCustomDataValue(TargetTile, 0, 1,true);
 }
 
 void AGridActor::UnlightTile(int TargetTile)
 {
-	InstancedStaticMeshComponent->SetCustomDataValue(TargetTile, 0, 0);
+	InstancedStaticMeshComponent->SetCustomDataValue(TargetTile, 0, 0, true);
 }
 
 FIntVector2 AGridActor::GetTileIndexByCursorPosition(int PlayerControllerIndex) const
@@ -151,12 +151,12 @@ FIntVector2 AGridActor::GetTileIndexByCursorPosition(int PlayerControllerIndex) 
 	FHitResult TraceHit;
 	FVector CursorProjectionInGrid;
 	UGameplayStatics::GetPlayerController(GetWorld(), PlayerControllerIndex)->DeprojectMousePositionToWorld(ControllerCursorLocation, WorldDirection);
-	const bool bHit = UKismetSystemLibrary::SphereTraceSingle(GetWorld(), ControllerCursorLocation, ControllerCursorLocation+2000*WorldDirection, 50.f, UEngineTypes::ConvertToTraceType(ECC_GameTraceChannel2), false, TArray<AActor*>{}, EDrawDebugTrace::ForOneFrame, TraceHit, true );
+	const bool bHit = UKismetSystemLibrary::SphereTraceSingle(GetWorld(), ControllerCursorLocation, ControllerCursorLocation+2000*WorldDirection, 20.f, UEngineTypes::ConvertToTraceType(ECC_GameTraceChannel2), false, TArray<AActor*>{}, EDrawDebugTrace::ForOneFrame, TraceHit, true );
 	if(bHit)
 	{
 		CursorProjectionInGrid = TraceHit.Location;
 	}
-	TArray<int32> InstancesNearCursorByIndex = InstancedStaticMeshComponent->GetInstancesOverlappingSphere(CursorProjectionInGrid, 50.f); 
+	TArray<int32> InstancesNearCursorByIndex = InstancedStaticMeshComponent->GetInstancesOverlappingSphere(CursorProjectionInGrid, 20.f); 
 	if(InstancesNearCursorByIndex.IsEmpty())
 	{
 #if WITH_EDITOR
