@@ -6,6 +6,7 @@
 #include "GameFramework/Pawn.h"
 #include "TacticalBattleCameraPawn.generated.h"
 
+DECLARE_DYNAMIC_MULTICAST_DELEGATE(FTrySelectTile);
 UCLASS()
 class TACTICALRPG_API ATacticalBattleCameraPawn : public APawn
 {
@@ -25,6 +26,8 @@ public:
 
 	// Called to bind functionality to input
 	virtual void SetupPlayerInputComponent(class UInputComponent* PlayerInputComponent) override;
+
+	FTrySelectTile& GetSelectionEvent() {return TriedSelectingTileEvent;};
 
 private:
 	/** Camera boom positioning the camera behind the character */
@@ -58,6 +61,9 @@ private:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = Input, meta = (AllowPrivateAccess = "true"))
 	TObjectPtr<UInputAction> RotateAction;
 
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = Input, meta = (AllowPrivateAccess = "true"))
+	TObjectPtr<UInputAction> SelectAction;
+
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = CameraSettings, meta = (ClampMax = 1000.f,AllowPrivateAccess = "true"))
 	float CameraMaxZoomDistance = 1000.f;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = CameraSettings, meta = (ClampMin = 100.f, AllowPrivateAccess = "true"))
@@ -74,4 +80,7 @@ private:
 	void MoveCamera(const struct FInputActionValue& InputActionValue );
 	UFUNCTION()
 	void ZoomCamera(const struct FInputActionValue& InputActionValue );
+	UFUNCTION()
+	void TrySelectTile(const FInputActionValue& InputActionValue);
+	FTrySelectTile TriedSelectingTileEvent;
 };

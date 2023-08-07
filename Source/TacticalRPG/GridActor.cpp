@@ -8,6 +8,7 @@
 #include "GridModifierVolume.h"
 #include "GridUtilities.h"
 #include "MathUtil.h"
+#include "TacticalBattleCameraPawn.h"
 #include "Components/InstancedStaticMeshComponent.h"
 #include "Editor/EditorEngine.h"
 #include "Kismet/GameplayStatics.h"
@@ -35,6 +36,13 @@ void AGridActor::BeginPlay()
 	Super::BeginPlay();
 
 	RegenerateEnvironmentGrid();
+
+	auto* CameraControl = Cast<ATacticalBattleCameraPawn>(UGameplayStatics::GetPlayerController(GetWorld(), 0)->GetPawn());
+	if(CameraControl!= nullptr)
+	{
+		CameraControl->GetSelectionEvent().AddUniqueDynamic(this, &AGridActor::SelectHoveredTile);
+	}
+	
 }
 
 void AGridActor::RegenerateEnvironmentGrid()
@@ -88,12 +96,30 @@ void AGridActor::SpawnGridAt(FVector SpawnLocation, bool bUseEnvironment, bool b
 			AddTileAt(TileTransform, {i,j});
 		}
 	}
+	for(auto& TileIndex : TileDataMap)
+	{
+		UGridUtilitiesFunctionLibrary::GenerateTileNeighborhood(TileIndex.Key,this,TileIndex.Value.NeighboringIndexes);
+	}
 }
 
 void AGridActor::DestroyGrid()
 {
 	InstancedStaticMeshComponent->ClearInstances();
 	GridIndexToInstanceIndex.Empty();
+	TileDataMap.Empty();
+	const auto* Controller = UGameplayStatics::GetPlayerController(GetWorld(), 0);
+	if(Controller != nullptr)
+	{
+		auto* CameraControl = Cast<ATacticalBattleCameraPawn>(Controller->GetPawn());
+		if(CameraControl != nullptr)
+		{
+			if(CameraControl->GetSelectionEvent().IsBound())
+			{
+				CameraControl->GetSelectionEvent().RemoveAll(this);
+			}
+		}
+	}
+	
 }
 
 bool AGridActor::TraceForGround(FVector TraceStartLocation, FVector& TraceHitLocation) const
@@ -119,8 +145,12 @@ bool AGridActor::TraceForGround(FVector TraceStartLocation, FVector& TraceHitLoc
 
 void AGridActor::AddTileAt(const FTransform& TileTransform, const FIntVector2& GridIndex)
 {
-	GridIndexToInstanceIndex.Add({GridIndex.X,GridIndex.Y}, InstancedStaticMeshComponent->GetInstanceCount());
+	const int InstanceIndex = InstancedStaticMeshComponent->GetInstanceCount();
+	const FTileData TileData = FTileData(InstanceIndex);
+	GridIndexToInstanceIndex.Add(GridIndex, InstanceIndex);
 	InstancedStaticMeshComponent->AddInstance(TileTransform);
+	TileDataMap.Add(GridIndex,TileData);
+	//Neighborhood won't generate correctly unless the entire grid already exists
 }
 
 bool AGridActor::RemoveTileAt(const FIntVector2& GridIndexToRemove)
@@ -130,18 +160,35 @@ bool AGridActor::RemoveTileAt(const FIntVector2& GridIndexToRemove)
 		return false;
 	}
 	const int TargetIndex = GridIndexToInstanceIndex.FindAndRemoveChecked(GridIndexToRemove);
+	TileDataMap.FindAndRemoveChecked(GridIndexToRemove);
 	InstancedStaticMeshComponent->RemoveInstance(TargetIndex);
 	return true;
 }
 
-void AGridActor::HighlightTile(int TargetTile)
+void AGridActor::HighlightTile(const FIntVector2& GridIndex)
 {
+	const int TargetTile = *GridIndexToInstanceIndex.Find(GridIndex);
 	InstancedStaticMeshComponent->SetCustomDataValue(TargetTile, 0, 1,true);
+	ApplyStateToTile(GridIndex,static_cast<int>(ETileState::Hovered) );
 }
 
-void AGridActor::UnlightTile(int TargetTile)
+void AGridActor::UnlightTile(const FIntVector2& GridIndex)
 {
+	const int TargetTile = *GridIndexToInstanceIndex.Find(GridIndex);
 	InstancedStaticMeshComponent->SetCustomDataValue(TargetTile, 0, 0, true);
+	RemoveStateFromTile(GridIndex, static_cast<int>(ETileState::Hovered));
+}
+
+void AGridActor::ApplyStateToTile(const FIntVector2& TileIndex, const uint8 StateToAdd)
+{
+	FTileData* TileData = &TileDataMap.FindChecked(TileIndex);
+	TileData->TileState |= StateToAdd;
+}
+
+void AGridActor::RemoveStateFromTile(const FIntVector2& TileIndex, const uint8 StateToRemove)
+{
+	FTileData* TileData = &TileDataMap.FindChecked(TileIndex);
+	TileData->TileState &= ~StateToRemove;
 }
 
 FIntVector2 AGridActor::GetTileIndexByCursorPosition(int PlayerControllerIndex) const
@@ -160,7 +207,9 @@ FIntVector2 AGridActor::GetTileIndexByCursorPosition(int PlayerControllerIndex) 
 	if(InstancesNearCursorByIndex.IsEmpty())
 	{
 #if WITH_EDITOR
-		GEngine->AddOnScreenDebugMessage(0, 5, FColor::Red, FString::Format(TEXT("Player cursor at World Location: {0},{1},{2}. No tile at location"), {CursorProjectionInGrid.X, CursorProjectionInGrid.Y, CursorProjectionInGrid.Z}));
+		GEngine->AddOnScreenDebugMessage(0, 5, FColor::Yellow, FString::Format(TEXT("Player cursor at World Location: {0},{1},{2}. No tile at location"), {CursorProjectionInGrid.X, CursorProjectionInGrid.Y, CursorProjectionInGrid.Z}));
+		GEngine->RemoveOnScreenDebugMessage(1);
+		GEngine->RemoveOnScreenDebugMessage(2);
 #endif
 		return {-1,-1}; //return negative index to represent no tile overlapped
 	}
@@ -176,34 +225,67 @@ FIntVector2 AGridActor::GetTileIndexByCursorPosition(int PlayerControllerIndex) 
 	
 	auto TileIndex = *GridIndexToInstanceIndex.FindKey(InstancesNearCursorByIndex[0]);
 #if WITH_EDITOR
-	GEngine->AddOnScreenDebugMessage(0, 5, FColor::Red, FString::Format(TEXT("Player cursor at World Location: {0},{1},{2}. Closest Tile: {3}, {4}"), {CursorProjectionInGrid.X, CursorProjectionInGrid.Y, CursorProjectionInGrid.Z, TileIndex.X, TileIndex.Y}));
+	GEngine->AddOnScreenDebugMessage(0, 5, FColor::Yellow, FString::Format(TEXT("Player cursor at World Location: {0},{1},{2}. Closest Tile: {3}, {4}"), {CursorProjectionInGrid.X, CursorProjectionInGrid.Y, CursorProjectionInGrid.Z, TileIndex.X, TileIndex.Y}));
+	auto TargetTileData = TileDataMap.Find(TileIndex);
+	GEngine->AddOnScreenDebugMessage(1, 5, FColor::Yellow, FString::Format(TEXT("Data for tile - InstanceIndex : {0}. CurrentState: {1}. AllowedMovement: {2}"), {TargetTileData->InstanceIndex, TargetTileData->TileState, TargetTileData->AllowedMovementTypes}));
+	FString NeighborListString{TEXT("Tile neighbors: ")};
+	for(auto& Index : TargetTileData->NeighboringIndexes)
+	{
+		NeighborListString.Append(FString::Format(TEXT("({0}, {1}); "), {Index.X, Index.Y}));
+	}
+	GEngine->AddOnScreenDebugMessage(2,5,FColor::Yellow, NeighborListString);
 #endif
 	return {TileIndex};
 	
+}
+
+void AGridActor::SelectHoveredTile()
+{
+	if(HoveredTileIndex.X<0)
+	{
+		return;
+	}
+	if(!IsTileSelected(HoveredTileIndex))
+	{
+		ApplyStateToTile(HoveredTileIndex,static_cast<uint8>(ETileState::Selected));
+	}
+}
+
+bool AGridActor::IsTileSelected(const FIntVector2& TileIndex)
+{
+	const auto TargetTileData = TileDataMap.Find(TileIndex);
+	return TargetTileData->TileState & static_cast<uint8>(ETileState::Selected);
 }
 
 // Called every frame
 void AGridActor::Tick(float DeltaTime)
 {
 	Super::Tick(DeltaTime);
-	auto NewSelectedTileIndex = GetTileIndexByCursorPosition(0);
-	if(NewSelectedTileIndex != SelectedTileIndex) // if selection didn't change, do nothing
+	const auto NewHoveredTileIndex = GetTileIndexByCursorPosition(0);
+	if(NewHoveredTileIndex != HoveredTileIndex) // if selection didn't change, do nothing
 	{
 		//Return previous selection to default visuals before switching selection if it exists
-		if(SelectedTileIndex.X>=0)
+		if(HoveredTileIndex.X>=0)
 		{
-			UnlightTile(*GridIndexToInstanceIndex.Find(SelectedTileIndex));
+			UnlightTile(HoveredTileIndex);
+			
 		}
 		
-		SelectedTileIndex = NewSelectedTileIndex;
-		if(SelectedTileIndex.X<0)
+		HoveredTileIndex = NewHoveredTileIndex;
+		if(HoveredTileIndex.X<0)
 		{
 			return;
 		}
 		//Handle updating visuals of new selection if it exists
-		HighlightTile(*GridIndexToInstanceIndex.Find(SelectedTileIndex));
+		HighlightTile(HoveredTileIndex);
+		
 		
 	}
 	
+}
+
+bool AGridActor::ContainsTileWithIndex(const FIntVector2& TileIndex) const
+{
+	return GridIndexToInstanceIndex.Contains(TileIndex);
 }
 

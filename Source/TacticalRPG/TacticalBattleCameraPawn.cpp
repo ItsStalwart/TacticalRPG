@@ -74,6 +74,9 @@ void ATacticalBattleCameraPawn::SetupPlayerInputComponent(UInputComponent* Playe
 		//Zooming
 		EnhancedInputComponent->BindAction(ZoomAction, ETriggerEvent::Triggered, this, &ATacticalBattleCameraPawn::ZoomCamera);
 
+		//Selecting Tiles
+		EnhancedInputComponent->BindAction(SelectAction,ETriggerEvent::Triggered, this, &ATacticalBattleCameraPawn::TrySelectTile);
+
 	}
 }
 
@@ -102,5 +105,10 @@ void ATacticalBattleCameraPawn::ZoomCamera(const FInputActionValue& InputActionV
 {
 	const float ZoomDirection = InputActionValue.Get<float>();
 	CameraBoom-> TargetArmLength = FMath::Clamp(CameraBoom->TargetArmLength + ZoomDirection * CameraZoomSpeed, CameraMinZoomDistance, CameraMaxZoomDistance);
+}
+
+void ATacticalBattleCameraPawn::TrySelectTile(const FInputActionValue& InputActionValue)
+{
+	TriedSelectingTileEvent.Broadcast();
 }
 
