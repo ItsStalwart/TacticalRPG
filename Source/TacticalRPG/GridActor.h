@@ -14,9 +14,6 @@ struct FTileData
 public:
 	UPROPERTY(VisibleAnywhere)
 	int InstanceIndex;
-
-	UPROPERTY(VisibleAnywhere)
-	TArray<FIntVector2> NeighboringIndexes{};
 	
 	UPROPERTY(VisibleAnywhere,meta=(BitMask, BitMaskEnum = "/Script/TacticalRPG.ETileState"))
 	uint8 TileState;
@@ -108,6 +105,8 @@ private:
 
 	UFUNCTION()
 	void SelectHoveredTile();
+
+	void GetTileNeighborhood(const FIntVector2& TileIndex, TArray<FIntVector2>& OutNeighborhood) const;
 
 	bool IsTileSelected(const FIntVector2& TileIndex);
 

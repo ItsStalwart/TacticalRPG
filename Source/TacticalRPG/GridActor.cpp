@@ -26,7 +26,6 @@ AGridActor::AGridActor()
 	if(SetGridData != nullptr)
 	{
 		InstancedStaticMeshComponent->SetStaticMesh(SetGridData->GetTileMesh().LoadSynchronous());
-		//InstancedStaticMeshComponent->GetStaticMesh()->SetMaterial(0, SetGridData->GetTileBorderMaterial().LoadSynchronous());
 	}
 }
 
@@ -69,7 +68,6 @@ void AGridActor::SpawnGridAt(FVector SpawnLocation, bool bUseEnvironment, bool b
 		DestroyGrid();
 	}
 	InstancedStaticMeshComponent->SetStaticMesh(SetGridData->GetTileMesh().LoadSynchronous());
-	//InstancedStaticMeshComponent->GetStaticMesh()->SetMaterial(0, SetGridData->GetTileBorderMaterial().LoadSynchronous());
 	
 	const FIntVector2 GridDimension = SetGridData->GetGridDimension();
 	const float GridStep = InstancedStaticMeshComponent->GetStaticMesh()->GetBoundingBox().GetSize().X;
@@ -95,10 +93,6 @@ void AGridActor::SpawnGridAt(FVector SpawnLocation, bool bUseEnvironment, bool b
 			TileTransform = FTransform{TileLocation};
 			AddTileAt(TileTransform, {i,j});
 		}
-	}
-	for(auto& TileIndex : TileDataMap)
-	{
-		UGridUtilitiesFunctionLibrary::GenerateTileNeighborhood(TileIndex.Key,this,TileIndex.Value.NeighboringIndexes);
 	}
 }
 
@@ -150,7 +144,6 @@ void AGridActor::AddTileAt(const FTransform& TileTransform, const FIntVector2& G
 	GridIndexToInstanceIndex.Add(GridIndex, InstanceIndex);
 	InstancedStaticMeshComponent->AddInstance(TileTransform);
 	TileDataMap.Add(GridIndex,TileData);
-	//Neighborhood won't generate correctly unless the entire grid already exists
 }
 
 bool AGridActor::RemoveTileAt(const FIntVector2& GridIndexToRemove)
@@ -226,10 +219,12 @@ FIntVector2 AGridActor::GetTileIndexByCursorPosition(int PlayerControllerIndex) 
 	auto TileIndex = *GridIndexToInstanceIndex.FindKey(InstancesNearCursorByIndex[0]);
 #if WITH_EDITOR
 	GEngine->AddOnScreenDebugMessage(0, 5, FColor::Yellow, FString::Format(TEXT("Player cursor at World Location: {0},{1},{2}. Closest Tile: {3}, {4}"), {CursorProjectionInGrid.X, CursorProjectionInGrid.Y, CursorProjectionInGrid.Z, TileIndex.X, TileIndex.Y}));
-	auto TargetTileData = TileDataMap.Find(TileIndex);
+	auto* TargetTileData = TileDataMap.Find(TileIndex);
+	TArray<FIntVector2> TileNeighborhood{};
+	GetTileNeighborhood(TileIndex, TileNeighborhood);
 	GEngine->AddOnScreenDebugMessage(1, 5, FColor::Yellow, FString::Format(TEXT("Data for tile - InstanceIndex : {0}. CurrentState: {1}. AllowedMovement: {2}"), {TargetTileData->InstanceIndex, TargetTileData->TileState, TargetTileData->AllowedMovementTypes}));
 	FString NeighborListString{TEXT("Tile neighbors: ")};
-	for(auto& Index : TargetTileData->NeighboringIndexes)
+	for(auto& Index : TileNeighborhood)
 	{
 		NeighborListString.Append(FString::Format(TEXT("({0}, {1}); "), {Index.X, Index.Y}));
 	}
@@ -248,6 +243,54 @@ void AGridActor::SelectHoveredTile()
 	if(!IsTileSelected(HoveredTileIndex))
 	{
 		ApplyStateToTile(HoveredTileIndex,static_cast<uint8>(ETileState::Selected));
+	}
+}
+
+void AGridActor::GetTileNeighborhood(const FIntVector2& TileIndex, TArray<FIntVector2>& OutNeighborhood) const
+{
+	if(TileIndex.X <0 || TileIndex.Y <0 || !this->ContainsTileWithIndex(TileIndex))
+	{
+		UE_LOG(LogTemp,Warning, TEXT("Referenced grid does not contain a tile with the provided index."))
+		return;
+	}
+	OutNeighborhood.Empty();
+	if(TileIndex.Y % 2 == 0)
+	{
+		//(X-1,Y),(X+1,Y),(X-1,Y-1),(X-1,Y+1),(X,Y-1),(X,Y+1)
+		for(int i = TileIndex.X-1;i<=TileIndex.X; i++)
+		{
+			for(int j = TileIndex.Y-1;j<=TileIndex.Y + 1; j++)
+			{
+				FIntVector2 NeighborIndex {i,j};
+				if(this->ContainsTileWithIndex(NeighborIndex) && NeighborIndex != TileIndex)
+				{
+					OutNeighborhood.AddUnique(NeighborIndex);
+				}
+			}
+		}
+		const FIntVector2 ExceptionNeighbor {TileIndex.X+1, TileIndex.Y};
+		if(this->ContainsTileWithIndex(ExceptionNeighbor))
+		{
+			OutNeighborhood.AddUnique(ExceptionNeighbor);
+		}
+		return;
+	}
+	//(X-1,Y),(X+1,Y),(X,Y-1),(X+1,Y-1),(X,Y+1),(X+1,Y+1)
+	for(int i = TileIndex.X;i<=TileIndex.X + 1; i++)
+	{
+		for(int j = TileIndex.Y-1;j<=TileIndex.Y + 1; j++)
+		{
+			FIntVector2 NeighborIndex {i,j};
+			if(this->ContainsTileWithIndex(NeighborIndex) && NeighborIndex != TileIndex)
+			{
+				OutNeighborhood.AddUnique(NeighborIndex);
+			}
+		}
+	}
+	const FIntVector2 ExceptionNeighbor {TileIndex.X-1, TileIndex.Y};
+	if(this->ContainsTileWithIndex(ExceptionNeighbor))
+	{
+		OutNeighborhood.AddUnique(ExceptionNeighbor);
 	}
 }
 
