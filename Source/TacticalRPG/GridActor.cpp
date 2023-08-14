@@ -6,7 +6,6 @@
 #include "Editor.h"
 #include "GridData.h"
 #include "GridModifierVolume.h"
-#include "GridUtilities.h"
 #include "MathUtil.h"
 #include "TacticalBattleCameraPawn.h"
 #include "Components/InstancedStaticMeshComponent.h"
@@ -137,10 +136,106 @@ bool AGridActor::TraceForGround(FVector TraceStartLocation, FVector& TraceHitLoc
 	return bHit;
 }
 
+void AGridActor::RetracePathFromIndex(const FIntVector2& IntVector2, TArray<FIntVector2>& Array) const
+{
+	Array.Empty();
+	Array.Emplace(IntVector2);
+	UTileData* CurrentTile = TileDataMap.FindChecked(IntVector2);
+	while(CurrentTile->GetConnectedTile().IsSet())
+	{
+		auto Index = CurrentTile->GetConnectedTile().GetValue();
+		Array.Emplace(Index);
+		CurrentTile = TileDataMap.FindChecked(Index);
+	}
+	Algo::Reverse(Array);
+}
+
+bool AGridActor::FindPath(const FIntVector2& StartIndex, const FIntVector2& TargetIndex, TArray<FIntVector2>& OutPath,
+                          const uint8 UnitMovementType, const int UnitJumpPower) const
+{
+	OutPath.Empty();
+	TArray<FIntVector2> OpenList{};
+	OpenList.AddUnique(StartIndex);
+	TArray<FIntVector2> ClosedList{};
+	for (auto& [Index, Tile] : TileDataMap)
+	{
+		Tile->ResetConnectedTile();
+		Tile->SetGValue(MAX_int32);
+	}
+	auto* StartNode = TileDataMap.FindChecked(StartIndex);
+	StartNode->SetGValue(0);
+	StartNode->SetHValue(GetDistanceBetweenTiles(StartIndex,TargetIndex));
+
+	while(!OpenList.IsEmpty())
+	{
+		FIntVector2 CurrentIndex = GetLowestFValueTileIndex(OpenList);
+		if(CurrentIndex == TargetIndex)
+		{
+			OpenList.Empty();
+			RetracePathFromIndex(TargetIndex, OutPath);
+			return true;
+		}
+		OpenList.Remove(CurrentIndex);
+		ClosedList.AddUnique(CurrentIndex);
+		TArray<FIntVector2> Neighbors;
+		GetWalkableNeighbors(CurrentIndex,Neighbors, UnitMovementType, UnitJumpPower);
+		for (auto& Index : Neighbors)
+		{
+			if(ClosedList.Contains(Index))
+			{
+				continue;
+			}
+			int TentativeGValue = GetTileGValueByIndex(CurrentIndex) + GetDistanceBetweenTiles(CurrentIndex, Index);
+			if(TentativeGValue < GetTileGValueByIndex(Index))
+			{
+				auto* TargetTile = TileDataMap.FindChecked(Index);
+				TargetTile->SetConnectedTile(CurrentIndex);
+				TargetTile->SetGValue(TentativeGValue);
+				TargetTile->SetHValue(GetDistanceBetweenTiles(Index,TargetIndex));
+				OpenList.AddUnique(Index);
+			}
+		}
+	}
+	return false;
+}
+
+int AGridActor::GetTileGValueByIndex(const FIntVector2& TileIndex) const
+{
+	if(!ContainsTileWithIndex(TileIndex))
+	{
+		return INT_MAX;
+	}
+	return TileDataMap.FindChecked(TileIndex)->GetGValue();
+}
+
+FIntVector2 AGridActor::GetLowestFValueTileIndex(const TArray<FIntVector2>& GroupToSearch) const
+{
+	FIntVector2 LowestFValueIndex = GroupToSearch[0];
+	int LowestFValue = TileDataMap.FindChecked(LowestFValueIndex)->GetFValue();
+	for(auto& Index : GroupToSearch)
+	{
+		const auto* Tile = TileDataMap.FindChecked(Index);
+		if(Tile->GetFValue() < LowestFValue)
+		{
+			LowestFValue = Tile->GetFValue();
+			LowestFValueIndex = Index;
+		}
+	}
+	return  LowestFValueIndex;
+}
+
+int AGridActor::GetDistanceBetweenTiles(const FIntVector2& TileAIndex, const FIntVector2& TileBIndex)
+{
+	const int DistanceY = FMath::Abs(TileAIndex.Y - TileBIndex.Y);
+	const int DistanceX = FMath::Abs(TileAIndex.X - TileBIndex.X);
+	return DistanceX + DistanceY;
+}
+
 void AGridActor::AddTileAt(const FTransform& TileTransform, const FIntVector2& GridIndex)
 {
 	const int InstanceIndex = InstancedStaticMeshComponent->GetInstanceCount();
-	const FTileData TileData = FTileData(InstanceIndex);
+	UTileData* TileData = NewObject<UTileData>();
+	TileData->InstanceIndex = InstanceIndex;
 	GridIndexToInstanceIndex.Add(GridIndex, InstanceIndex);
 	InstancedStaticMeshComponent->AddInstance(TileTransform);
 	TileDataMap.Add(GridIndex,TileData);
@@ -172,15 +267,23 @@ void AGridActor::UnlightTile(const FIntVector2& GridIndex)
 	RemoveStateFromTile(GridIndex, static_cast<int>(ETileState::Hovered));
 }
 
+void AGridActor::UnlightAllTiles()
+{
+	for(auto& [Index, Tile] : TileDataMap)
+	{
+		UnlightTile(Index);
+	}
+}
+
 void AGridActor::ApplyStateToTile(const FIntVector2& TileIndex, const uint8 StateToAdd)
 {
-	FTileData* TileData = &TileDataMap.FindChecked(TileIndex);
+	UTileData* TileData = TileDataMap.FindChecked(TileIndex);
 	TileData->TileState |= StateToAdd;
 }
 
 void AGridActor::RemoveStateFromTile(const FIntVector2& TileIndex, const uint8 StateToRemove)
 {
-	FTileData* TileData = &TileDataMap.FindChecked(TileIndex);
+	UTileData* TileData = TileDataMap.FindChecked(TileIndex);
 	TileData->TileState &= ~StateToRemove;
 }
 
@@ -216,10 +319,10 @@ FIntVector2 AGridActor::GetTileIndexByCursorPosition(int PlayerControllerIndex) 
 		return FVector::Distance(InstanceATransform.GetLocation(), ControllerCursorLocation) > FVector::Distance(InstanceBTransform.GetLocation(), ControllerCursorLocation);
 	});
 	
-	auto TileIndex = *GridIndexToInstanceIndex.FindKey(InstancesNearCursorByIndex[0]);
+	auto& TileIndex = *GridIndexToInstanceIndex.FindKey(InstancesNearCursorByIndex[0]);
 #if WITH_EDITOR
 	GEngine->AddOnScreenDebugMessage(0, 5, FColor::Yellow, FString::Format(TEXT("Player cursor at World Location: {0},{1},{2}. Closest Tile: {3}, {4}"), {CursorProjectionInGrid.X, CursorProjectionInGrid.Y, CursorProjectionInGrid.Z, TileIndex.X, TileIndex.Y}));
-	auto* TargetTileData = TileDataMap.Find(TileIndex);
+	auto* TargetTileData = *TileDataMap.Find(TileIndex);
 	TArray<FIntVector2> TileNeighborhood{};
 	GetTileNeighborhood(TileIndex, TileNeighborhood);
 	GEngine->AddOnScreenDebugMessage(1, 5, FColor::Yellow, FString::Format(TEXT("Data for tile - InstanceIndex : {0}. CurrentState: {1}. AllowedMovement: {2}"), {TargetTileData->InstanceIndex, TargetTileData->TileState, TargetTileData->AllowedMovementTypes}));
@@ -240,9 +343,18 @@ void AGridActor::SelectHoveredTile()
 	{
 		return;
 	}
+	
 	if(!IsTileSelected(HoveredTileIndex))
 	{
-		ApplyStateToTile(HoveredTileIndex,static_cast<uint8>(ETileState::Selected));
+		UnlightAllTiles();
+		TArray<FIntVector2> Path;
+		if(FindPath({0,0},HoveredTileIndex,Path))
+		{
+			for (auto& Index : Path)
+			{
+				HighlightTile(Index);
+			}
+		}
 	}
 }
 
@@ -294,9 +406,83 @@ void AGridActor::GetTileNeighborhood(const FIntVector2& TileIndex, TArray<FIntVe
 	}
 }
 
+void AGridActor::GetWalkableNeighbors(const FIntVector2& TileIndex, TArray<FIntVector2>& OutNeighborhood,
+	const uint8 MoveTypeToCheck, int JumpPower) const
+{
+	if(TileIndex.X <0 || TileIndex.Y <0 || !this->ContainsTileWithIndex(TileIndex))
+	{
+		UE_LOG(LogTemp,Warning, TEXT("Referenced grid does not contain a tile with the provided index."))
+		return;
+	}
+	OutNeighborhood.Empty();
+	if(TileIndex.Y % 2 == 0)
+	{
+		//(X-1,Y),(X+1,Y),(X-1,Y-1),(X-1,Y+1),(X,Y-1),(X,Y+1)
+		for(int i = TileIndex.X-1;i<=TileIndex.X; i++)
+		{
+			for(int j = TileIndex.Y-1;j<=TileIndex.Y + 1; j++)
+			{
+				FIntVector2 NeighborIndex {i,j};
+				
+				if(this->ContainsTileWithIndex(NeighborIndex) && NeighborIndex != TileIndex)
+				{
+					const auto* NeighborTile = TileDataMap.FindChecked(NeighborIndex);
+					const auto* OriginalTile = TileDataMap.FindChecked(TileIndex);
+					
+					const bool bWalkable = NeighborTile->IsTileWalkable(MoveTypeToCheck);
+					const bool bEnoughJump = FMath::Abs(NeighborTile->Height-OriginalTile->Height) <= JumpPower;
+					
+					if(bWalkable && bEnoughJump)
+					{
+						OutNeighborhood.AddUnique(NeighborIndex);
+					}
+				}
+			}
+		}
+		const FIntVector2 ExceptionNeighbor {TileIndex.X+1, TileIndex.Y};
+		if(this->ContainsTileWithIndex(ExceptionNeighbor) && ExceptionNeighbor != TileIndex)
+		{
+			const bool bWalkable = TileDataMap.FindChecked(ExceptionNeighbor)->IsTileWalkable(MoveTypeToCheck);
+			const bool bEnoughJump = FMath::Abs(TileDataMap.FindChecked(ExceptionNeighbor)->Height-TileDataMap.FindChecked(TileIndex)->Height) <= JumpPower;
+			if(bWalkable && bEnoughJump)
+			{
+				OutNeighborhood.AddUnique(ExceptionNeighbor);
+			}
+		}
+		return;
+	}
+	//(X-1,Y),(X+1,Y),(X,Y-1),(X+1,Y-1),(X,Y+1),(X+1,Y+1)
+	for(int i = TileIndex.X;i<=TileIndex.X + 1; i++)
+	{
+		for(int j = TileIndex.Y-1;j<=TileIndex.Y + 1; j++)
+		{
+			FIntVector2 NeighborIndex {i,j};
+			if(this->ContainsTileWithIndex(NeighborIndex) && NeighborIndex != TileIndex)
+			{
+				const bool bWalkable = TileDataMap.FindChecked(NeighborIndex)->IsTileWalkable(MoveTypeToCheck);
+				const bool bEnoughJump = FMath::Abs(TileDataMap.FindChecked(NeighborIndex)->Height-TileDataMap.FindChecked(TileIndex)->Height) <= JumpPower;
+				if(bWalkable && bEnoughJump)
+				{
+					OutNeighborhood.AddUnique(NeighborIndex);
+				}
+			}
+		}
+	}
+	const FIntVector2 ExceptionNeighbor {TileIndex.X-1, TileIndex.Y};
+	if(this->ContainsTileWithIndex(ExceptionNeighbor) && ExceptionNeighbor != TileIndex)
+	{
+		const bool bWalkable = TileDataMap.FindChecked(ExceptionNeighbor)->IsTileWalkable(MoveTypeToCheck);
+		const bool bEnoughJump = FMath::Abs(TileDataMap.FindChecked(ExceptionNeighbor)->Height-TileDataMap.FindChecked(TileIndex)->Height) <= JumpPower;
+		if(bWalkable && bEnoughJump)
+		{
+			OutNeighborhood.AddUnique(ExceptionNeighbor);
+		}
+	}
+}
+
 bool AGridActor::IsTileSelected(const FIntVector2& TileIndex)
 {
-	const auto TargetTileData = TileDataMap.Find(TileIndex);
+	const auto* TargetTileData = *TileDataMap.Find(TileIndex);
 	return TargetTileData->TileState & static_cast<uint8>(ETileState::Selected);
 }
 
@@ -308,10 +494,9 @@ void AGridActor::Tick(float DeltaTime)
 	if(NewHoveredTileIndex != HoveredTileIndex) // if selection didn't change, do nothing
 	{
 		//Return previous selection to default visuals before switching selection if it exists
-		if(HoveredTileIndex.X>=0)
+		if(HoveredTileIndex.X>=0 && !IsTileSelected(HoveredTileIndex))
 		{
 			UnlightTile(HoveredTileIndex);
-			
 		}
 		
 		HoveredTileIndex = NewHoveredTileIndex;

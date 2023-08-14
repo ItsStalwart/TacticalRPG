@@ -35,5 +35,5 @@ public:
 
 	UFUNCTION(BlueprintCallable, BlueprintPure)
 	static FLinearColor GenerateVolumeColor(UPARAM(meta=(BitMask, BitMaskEnum = "/Script/TacticalRPG.EGridMovementType")) const int MovementCombination);
-
+	
 };
