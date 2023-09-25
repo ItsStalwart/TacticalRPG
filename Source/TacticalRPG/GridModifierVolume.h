@@ -7,6 +7,16 @@
 #include "Engine/StaticMeshActor.h"
 #include "GridModifierVolume.generated.h"
 
+USTRUCT(BlueprintType)
+struct FGridModifierVolumeData
+{
+	GENERATED_BODY()
+	UPROPERTY(EditAnywhere)
+	int ModifiedMovementCost{1};
+
+	UPROPERTY(EditAnywhere, meta=(Bitmask, BitmaskEnum = "/Script/TacticalRPG.EGridMovementType"))
+	uint8 VolumeAllowedMovement {7};
+};
 /**
  * 
  */
@@ -17,15 +27,21 @@ class TACTICALRPG_API AGridModifierVolume : public AStaticMeshActor
 
 	AGridModifierVolume();
 
-	UPROPERTY(EditInstanceOnly, meta=(Bitmask, BitmaskEnum = "/Script/TacticalRPG.EGridMovementType"))
-	uint8 VolumeAllowedMovement {0}; 
+	UPROPERTY(EditInstanceOnly)
+	FGridModifierVolumeData VolumeSettings;
 
 	virtual void PostEditChangeProperty(FPropertyChangedEvent& PropertyChangedEvent) override;
 
 public:
 	UFUNCTION(meta=(BitMask, BitMaskEnum = "/Script/TacticalRPG.EGridMovementType"))
-	uint8 GetVolumeAllowedMovement() const { return VolumeAllowedMovement;};
+	uint8 GetVolumeAllowedMovement() const { return VolumeSettings.VolumeAllowedMovement;};
 
 	UFUNCTION()
-	bool DoesBlockAllMovement() const {return VolumeAllowedMovement == 0;};
+	bool DoesBlockAllMovement() const {return VolumeSettings.VolumeAllowedMovement == 0;};
+
+	UFUNCTION()
+	int GetModifiedMovementCost() const {return VolumeSettings.ModifiedMovementCost;}
+
+	UFUNCTION()
+	FGridModifierVolumeData GetVolumeSettings() const {return VolumeSettings;}
 };

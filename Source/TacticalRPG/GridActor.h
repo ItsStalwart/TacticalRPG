@@ -6,6 +6,9 @@
 #include "GridUtilities.h"
 #include "GameFramework/Actor.h"
 #include "GridActor.generated.h"
+
+struct FGridModifierVolumeData;
+
 USTRUCT()
 struct FPathData
 {
@@ -53,6 +56,8 @@ public:
 	void SetHValue(const int32 InValue) {TilePathData.H = InValue;}
 	int& GetHValue() {return TilePathData.H;}
 	int GetFValue() const {return TilePathData.G + TilePathData.H;}
+	int& GetMovementCost() {return MovementCost;}
+	void SetMovementCost(const int32 InValue) {MovementCost = InValue;}
 
 	UFUNCTION()
 	bool IsTileWalkable(UPARAM(meta=(BitMask, BitMaskEnum = "/Script/TacticalRPG.EGridMovementType")) const uint8 MoveTypeToCheck) const { return AllowedMovementTypes & MoveTypeToCheck;};
@@ -110,11 +115,13 @@ protected:
 	void DestroyGrid();
 
 	UFUNCTION(BlueprintCallable)
-	bool TraceForGround(FVector TraceStartLocation, FVector& TraceHitLocation) const;
+	bool TraceForGround(FVector TraceStartLocation, FVector& TraceHitLocation, FGridModifierVolumeData& HitVolumeData) const;
 
 	void RetracePathFromIndex(const FIntVector2& IntVector2, TArray<FIntVector2>& Array) const;
 	UFUNCTION()
-	bool FindPath(const FIntVector2& StartIndex, const FIntVector2& TargetIndex, TArray<FIntVector2>& OutPath, UPARAM(meta=(BitMask, BitMaskEnum = "/Script/TacticalRPG.EGridMovementType")) const uint8 UnitMovementType = static_cast<uint8>(EGridMovementType::Any), const int UnitJumpPower = INT_MAX) const;
+	bool FindPath(const FIntVector2& StartIndex, const FIntVector2& TargetIndex, TArray<FIntVector2>& OutPath, UPARAM(meta=(BitMask, BitMaskEnum = "/Script/TacticalRPG.EGridMovementType")) const uint8 UnitMovementType = static_cast<uint8>(EGridMovementType::Any), const int UnitJumpPower = INT_MAX, TMap<FIntVector2, UTileData*> TileSetData = {}) const;
+	UFUNCTION()
+	void GetWalkableTilesInRange(const FIntVector2& StartIndex, const int MovementRange, TArray<FIntVector2>& OutRange, UPARAM(meta=(BitMask, BitMaskEnum = "/Script/TacticalRPG.EGridMovementType")) const uint8 UnitMovementType = static_cast<uint8>(EGridMovementType::Any), const int UnitJumpPower = INT_MAX );
 
 private:
 	TMap<FIntVector2, int> GridIndexToInstanceIndex{};
@@ -122,10 +129,11 @@ private:
 	UPROPERTY(VisibleInstanceOnly)
 	TMap<FIntVector2, UTileData*> TileDataMap{};
 	int GetTileGValueByIndex(const FIntVector2& TileIndex) const;
+	int GetTileMovementCost(const FIntVector2& TileIndex, bool bHinderedByTerrain) const;
 	FIntVector2 GetLowestFValueTileIndex(const TArray<FIntVector2>& GroupToSearch) const;
 	
 
-	void AddTileAt(const FTransform& TileTransform, const FIntVector2& GridIndex);
+	void AddTileAt(const FTransform& TileTransform, const FIntVector2& GridIndex, const FGridModifierVolumeData InTileSettings);
 	bool RemoveTileAt(const FIntVector2& GridIndexToRemove);
 	
 	void HighlightTile(const FIntVector2& GridIndex);
@@ -142,13 +150,13 @@ private:
 	FIntVector2 HoveredTileIndex{-1,-1};
 
 	static int GetDistanceBetweenTiles(const FIntVector2& TileAIndex,const FIntVector2& TileBIndex);
-
+	void GetAllTilesInRange(const FIntVector2& StartIndex, const int MovementRange, TArray<FIntVector2>& OutRange,TMap<FIntVector2, UTileData*> TileSetData = {});
 	UFUNCTION()
 	void SelectHoveredTile();
 
-	void GetTileNeighborhood(const FIntVector2& TileIndex, TArray<FIntVector2>& OutNeighborhood) const;
+	void GetTileNeighborhood(const FIntVector2& TileIndex, TArray<FIntVector2>& OutNeighborhood, TMap<FIntVector2, UTileData*> TileSetData = {}) const;
 	UFUNCTION()
-	void GetWalkableNeighbors(const FIntVector2& TileIndex, TArray<FIntVector2>& OutNeighborhood, UPARAM(meta=(BitMask, BitMaskEnum = "/Script/TacticalRPG.EGridMovementType")) const uint8 MoveTypeToCheck = static_cast<uint8>(EGridMovementType::Any), int JumpPower = INT_MAX) const;
+	void GetWalkableNeighbors(const FIntVector2& TileIndex, TArray<FIntVector2>& OutNeighborhood, UPARAM(meta=(BitMask, BitMaskEnum = "/Script/TacticalRPG.EGridMovementType")) const uint8 MoveTypeToCheck = static_cast<uint8>(EGridMovementType::Any), int JumpPower = INT_MAX, TMap<FIntVector2, UTileData*> TileSetData = {}) const;
 
 	bool IsTileSelected(const FIntVector2& TileIndex);
 

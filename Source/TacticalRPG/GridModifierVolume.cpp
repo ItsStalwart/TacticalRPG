@@ -15,9 +15,9 @@ void AGridModifierVolume::PostEditChangeProperty(FPropertyChangedEvent& Property
 {
 	Super::PostEditChangeProperty(PropertyChangedEvent);
 
-	if(PropertyChangedEvent.GetPropertyName() == GET_MEMBER_NAME_CHECKED(AGridModifierVolume, VolumeAllowedMovement))
+	if(PropertyChangedEvent.GetPropertyName() == GET_MEMBER_NAME_CHECKED(FGridModifierVolumeData, VolumeAllowedMovement))
 	{
-		const FLinearColor BrushColor = UGridUtilitiesFunctionLibrary::GenerateVolumeColor(VolumeAllowedMovement);
+		const FLinearColor BrushColor = UGridUtilitiesFunctionLibrary::GenerateVolumeColor(VolumeSettings.VolumeAllowedMovement);
 		const FVector ColorValue {BrushColor.R, BrushColor.G, BrushColor.B};
 		GetStaticMeshComponent()->SetVectorParameterValueOnMaterials(TEXT("Color"), ColorValue );
 	}
