@@ -122,6 +122,8 @@ protected:
 	bool FindPath(const FIntVector2& StartIndex, const FIntVector2& TargetIndex, TArray<FIntVector2>& OutPath, UPARAM(meta=(BitMask, BitMaskEnum = "/Script/TacticalRPG.EGridMovementType")) const uint8 UnitMovementType = static_cast<uint8>(EGridMovementType::Any), const int UnitJumpPower = INT_MAX, TMap<FIntVector2, UTileData*> TileSetData = {}) const;
 	UFUNCTION()
 	void GetWalkableTilesInRange(const FIntVector2& StartIndex, const int MovementRange, TArray<FIntVector2>& OutRange, UPARAM(meta=(BitMask, BitMaskEnum = "/Script/TacticalRPG.EGridMovementType")) const uint8 UnitMovementType = static_cast<uint8>(EGridMovementType::Any), const int UnitJumpPower = INT_MAX );
+	UFUNCTION()
+	int CalculatePathingCost(TArray<FIntVector2>& Path, bool HinderedByTerrain) const;
 
 private:
 	TMap<FIntVector2, int> GridIndexToInstanceIndex{};
@@ -150,7 +152,7 @@ private:
 	FIntVector2 HoveredTileIndex{-1,-1};
 
 	static int GetDistanceBetweenTiles(const FIntVector2& TileAIndex,const FIntVector2& TileBIndex);
-	void GetAllTilesInRange(const FIntVector2& StartIndex, const int MovementRange, TArray<FIntVector2>& OutRange,TMap<FIntVector2, UTileData*> TileSetData = {});
+	void GetAllTilesInRange(const FIntVector2& StartIndex, const int MovementRange, TArray<FIntVector2>& OutRange,TMap<FIntVector2, UTileData*> TileSetData = {}) const;
 	UFUNCTION()
 	void SelectHoveredTile();
 

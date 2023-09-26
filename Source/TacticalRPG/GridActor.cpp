@@ -231,10 +231,23 @@ void AGridActor::GetWalkableTilesInRange(const FIntVector2& StartIndex, const in
 	{
 		if(FindPath(StartIndex,Index, AuxPath, UnitMovementType, UnitJumpPower, RangeDataSet ))
 		{
-			AuxRange.Emplace(Index);
+			if( CalculatePathingCost(AuxPath, UnitMovementType & static_cast<uint8>(EGridMovementType::Aerial)) <= MovementRange)
+			{
+				AuxRange.Emplace(Index);
+			}
 		}
 	}
 	OutRange = AuxRange;
+}
+
+int AGridActor::CalculatePathingCost(TArray<FIntVector2>& Path, bool HinderedByTerrain) const
+{
+	int Result = 0;
+	for (int i = 1; i < Path.Num(); i++)
+	{
+		Result += GetTileMovementCost(Path[i], HinderedByTerrain);
+	}
+	return Result;
 }
 
 int AGridActor::GetTileGValueByIndex(const FIntVector2& TileIndex) const
@@ -283,7 +296,7 @@ int AGridActor::GetDistanceBetweenTiles(const FIntVector2& TileAIndex, const FIn
 }
 
 void AGridActor::GetAllTilesInRange(const FIntVector2& StartIndex, const int MovementRange,
-	TArray<FIntVector2>& OutRange, TMap<FIntVector2, UTileData*> TileSetData)
+	TArray<FIntVector2>& OutRange, TMap<FIntVector2, UTileData*> TileSetData) const
 {
 	if(TileSetData.IsEmpty())
 	{
