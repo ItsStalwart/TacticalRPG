@@ -11,6 +11,8 @@ class TACTICALRPG_API ATacticalBattleCharacter : public ACharacter
 {
 	GENERATED_BODY()
 
+	friend class AGridActor;
+
 public:
 	// Sets default values for this character's properties
 	ATacticalBattleCharacter();
@@ -19,7 +21,10 @@ protected:
 	// Called when the game starts or when spawned
 	virtual void BeginPlay() override;
 
+	FIntVector2 CurrentPosition {-1,-1};
+
 public:
+	
 	// Called every frame
 	virtual void Tick(float DeltaTime) override;
 

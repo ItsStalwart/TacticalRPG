@@ -8,6 +8,8 @@
 #include "GridModifierVolume.h"
 #include "MathUtil.h"
 #include "TacticalBattleCameraPawn.h"
+#include "TacticalBattleCharacter.h"
+#include "Components/CapsuleComponent.h"
 #include "Components/InstancedStaticMeshComponent.h"
 #include "Editor/EditorEngine.h"
 #include "Kismet/GameplayStatics.h"
@@ -26,6 +28,21 @@ AGridActor::AGridActor()
 	{
 		InstancedStaticMeshComponent->SetStaticMesh(SetGridData->GetTileMesh().LoadSynchronous());
 	}
+}
+
+void AGridActor::PlaceCharacterInGrid(const FIntVector2& TargetTile, ATacticalBattleCharacter* Character)
+{
+	if(!ContainsTileWithIndex(TargetTile))
+	{
+		UE_LOG(LogTemp,Warning, TEXT("Tried to place character at invalid grid tile."))
+	}
+	auto* TileData = TileDataMap.FindChecked(TargetTile);
+	TileData->SetOccupantCharacter(Character);
+	Character->CurrentPosition = TargetTile;
+	FTransform TileTransform;
+	InstancedStaticMeshComponent->GetInstanceTransform(TileData->GetInstanceIndex(), TileTransform, true);
+	const FVector TileLocation = TileTransform.GetLocation();
+	Character->SetActorLocation(FVector(TileLocation.X, TileLocation.Y, TileLocation.Z + Character->GetCapsuleComponent()->GetUnscaledCapsuleHalfHeight()),false,nullptr, ETeleportType::TeleportPhysics);
 }
 
 // Called when the game starts or when spawned
@@ -240,12 +257,12 @@ void AGridActor::GetWalkableTilesInRange(const FIntVector2& StartIndex, const in
 	OutRange = AuxRange;
 }
 
-int AGridActor::CalculatePathingCost(TArray<FIntVector2>& Path, bool HinderedByTerrain) const
+int AGridActor::CalculatePathingCost(TArray<FIntVector2>& Path, bool bUnhinderedByTerrain) const
 {
 	int Result = 0;
 	for (int i = 1; i < Path.Num(); i++)
 	{
-		Result += GetTileMovementCost(Path[i], HinderedByTerrain);
+		Result += GetTileMovementCost(Path[i], bUnhinderedByTerrain);
 	}
 	return Result;
 }
@@ -259,13 +276,13 @@ int AGridActor::GetTileGValueByIndex(const FIntVector2& TileIndex) const
 	return TileDataMap.FindChecked(TileIndex)->GetGValue();
 }
 
-int AGridActor::GetTileMovementCost(const FIntVector2& TileIndex, bool bHinderedByTerrain) const
+int AGridActor::GetTileMovementCost(const FIntVector2& TileIndex, bool bUnhinderedByTerrain) const
 {
 	if(!ContainsTileWithIndex(TileIndex))
 	{
 		return INT_MAX;
 	}
-	if(!bHinderedByTerrain)
+	if(bUnhinderedByTerrain)
 	{
 		return 1;
 	}
@@ -321,8 +338,8 @@ void AGridActor::AddTileAt(const FTransform& TileTransform, const FIntVector2& G
 	const int InstanceIndex = InstancedStaticMeshComponent->GetInstanceCount();
 	UTileData* TileData = NewObject<UTileData>();
 	TileData->SetMovementCost(InTileSettings.ModifiedMovementCost);
-	TileData->AllowedMovementTypes = InTileSettings.VolumeAllowedMovement;
-	TileData->InstanceIndex = InstanceIndex;
+	TileData->SetAllowedMovementTypes(InTileSettings.VolumeAllowedMovement);
+	TileData->SetInstanceIndex(InstanceIndex);
 	GridIndexToInstanceIndex.Add(GridIndex, InstanceIndex);
 	InstancedStaticMeshComponent->AddInstance(TileTransform);
 	TileDataMap.Add(GridIndex,TileData);
@@ -365,13 +382,13 @@ void AGridActor::UnlightAllTiles()
 void AGridActor::ApplyStateToTile(const FIntVector2& TileIndex, const uint8 StateToAdd)
 {
 	UTileData* TileData = TileDataMap.FindChecked(TileIndex);
-	TileData->TileState |= StateToAdd;
+	TileData->AddState(StateToAdd);
 }
 
 void AGridActor::RemoveStateFromTile(const FIntVector2& TileIndex, const uint8 StateToRemove)
 {
 	UTileData* TileData = TileDataMap.FindChecked(TileIndex);
-	TileData->TileState &= ~StateToRemove;
+	TileData->RemoveState(StateToRemove);
 }
 
 FIntVector2 AGridActor::GetTileIndexByCursorPosition(int PlayerControllerIndex) const
@@ -412,7 +429,7 @@ FIntVector2 AGridActor::GetTileIndexByCursorPosition(int PlayerControllerIndex) 
 	auto* TargetTileData = *TileDataMap.Find(TileIndex);
 	TArray<FIntVector2> TileNeighborhood{};
 	GetTileNeighborhood(TileIndex, TileNeighborhood);
-	GEngine->AddOnScreenDebugMessage(1, 5, FColor::Yellow, FString::Format(TEXT("Data for tile - InstanceIndex : {0}. CurrentState: {1}. AllowedMovement: {2}"), {TargetTileData->InstanceIndex, TargetTileData->TileState, TargetTileData->AllowedMovementTypes}));
+	GEngine->AddOnScreenDebugMessage(1, 5, FColor::Yellow, FString::Format(TEXT("Data for tile - InstanceIndex : {0}. CurrentState: {1}. AllowedMovement: {2}"), {TargetTileData->GetInstanceIndex(), TargetTileData->GetTileState(), TargetTileData->GetAllowedMovementTypes()}));
 	FString NeighborListString{TEXT("Tile neighbors: ")};
 	for(auto& Index : TileNeighborhood)
 	{
@@ -449,6 +466,8 @@ void AGridActor::SelectHoveredTile()
 		{
 			HighlightTile(Index);
 		}
+		ATacticalBattleCharacter* TestCharacter = Cast<ATacticalBattleCharacter>( UGameplayStatics::GetActorOfClass(GetWorld(), ATacticalBattleCharacter::StaticClass()));
+		PlaceCharacterInGrid(HoveredTileIndex, TestCharacter);
 	}
 }
 
@@ -511,7 +530,7 @@ void AGridActor::GetWalkableNeighbors(const FIntVector2& TileIndex, TArray<FIntV
 				const auto* OriginalTile = TileSetData.FindChecked(TileIndex);
 				
 				const bool bWalkable = NeighborTile->IsTileWalkable(MoveTypeToCheck);
-				const bool bEnoughJump = FMath::Abs(NeighborTile->Height-OriginalTile->Height) <= JumpPower;
+				const bool bEnoughJump = FMath::Abs(NeighborTile->GetTileHeight() - OriginalTile->GetTileHeight()) <= JumpPower;
 				
 				if(bWalkable && bEnoughJump)
 				{
@@ -525,7 +544,7 @@ void AGridActor::GetWalkableNeighbors(const FIntVector2& TileIndex, TArray<FIntV
 bool AGridActor::IsTileSelected(const FIntVector2& TileIndex)
 {
 	const auto* TargetTileData = *TileDataMap.Find(TileIndex);
-	return TargetTileData->TileState & static_cast<uint8>(ETileState::Selected);
+	return TargetTileData->GetTileState() & static_cast<uint8>(ETileState::Selected);
 }
 
 // Called every frame

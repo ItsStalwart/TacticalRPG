@@ -9,6 +9,8 @@
 
 struct FGridModifierVolumeData;
 
+
+
 USTRUCT()
 struct FPathData
 {
@@ -29,7 +31,7 @@ UCLASS()
 class UTileData : public UObject
 {
 	GENERATED_BODY()
-public:
+
 	UPROPERTY(VisibleAnywhere)
 	int InstanceIndex;
 
@@ -44,9 +46,83 @@ public:
 
 	UPROPERTY(VisibleAnywhere,meta=(BitMask, BitMaskEnum = "/Script/TacticalRPG.EGridMovementType"))
 	uint8 AllowedMovementTypes{ static_cast<uint8>(EGridMovementType::Any)};
-	
+
 	UPROPERTY(VisibleAnywhere)
 	FPathData TilePathData;
+
+	UPROPERTY(VisibleAnywhere)
+	class ATacticalBattleCharacter* OccupantCharacter {nullptr};
+
+public:
+	[[nodiscard]] int GetInstanceIndex() const
+	{
+		return InstanceIndex;
+	}
+
+	void SetInstanceIndex(int NewIndex)
+	{
+		this->InstanceIndex = NewIndex;
+	}
+
+	[[nodiscard]] int GetMovementCost() const
+	{
+		return MovementCost;
+	}
+
+	void SetMovementCost(int NewMovementCost)
+	{
+		this->MovementCost = NewMovementCost;
+	}
+
+	[[nodiscard]] int GetHeight() const
+	{
+		return Height;
+	}
+
+	void SetHeight(int InHeight)
+	{
+		this->Height = InHeight;
+	}
+
+	[[nodiscard]] uint8 GetTileState() const
+	{
+		return TileState;
+	}
+
+	void SetTileState(uint8 InTileState)
+	{
+		this->TileState = InTileState;
+	}
+
+	[[nodiscard]] uint8 GetAllowedMovementTypes() const
+	{
+		return AllowedMovementTypes;
+	}
+
+	void SetAllowedMovementTypes(uint8 InAllowedMovementTypes)
+	{
+		this->AllowedMovementTypes = InAllowedMovementTypes;
+	}
+
+	[[nodiscard]] const FPathData& GetTilePathData() const
+	{
+		return TilePathData;
+	}
+
+	void SetTilePathData(const FPathData& InTilePathData)
+	{
+		this->TilePathData = InTilePathData;
+	}
+
+	[[nodiscard]] ATacticalBattleCharacter* GetOccupantCharacter() const
+	{
+		return OccupantCharacter;
+	}
+
+	void SetOccupantCharacter(ATacticalBattleCharacter* InOccupantCharacter)
+	{
+		this->OccupantCharacter = InOccupantCharacter;
+	}
 
 	TOptional<FIntVector2>& GetConnectedTile() {return TilePathData.Connection;}
 	void SetConnectedTile(const FIntVector2& InConnection) {TilePathData.Connection = InConnection;}
@@ -56,8 +132,10 @@ public:
 	void SetHValue(const int32 InValue) {TilePathData.H = InValue;}
 	int& GetHValue() {return TilePathData.H;}
 	int GetFValue() const {return TilePathData.G + TilePathData.H;}
-	int& GetMovementCost() {return MovementCost;}
-	void SetMovementCost(const int32 InValue) {MovementCost = InValue;}
+	bool IsTileOccupied() const { return OccupantCharacter != nullptr;}
+	void AddState(const uint8 InState) {TileState |= InState;}
+	void RemoveState(const uint8 InState){TileState &= ~InState;}
+	int GetTileHeight() const {return Height;}
 
 	UFUNCTION()
 	bool IsTileWalkable(UPARAM(meta=(BitMask, BitMaskEnum = "/Script/TacticalRPG.EGridMovementType")) const uint8 MoveTypeToCheck) const { return AllowedMovementTypes & MoveTypeToCheck;};
@@ -75,6 +153,7 @@ enum class ETileState
 	None=0 UMETA(Hidden),
 	Hovered = 1 << 0 UMETA(DisplayName="Hovered"),
 	Selected = 1 << 1 UMETA(DisplayName="Selected"),
+	Highlighted = 1 << 2 UMETA(DisplayName="Highlighted"),
 };
 ENUM_CLASS_FLAGS(ETileState);
 
@@ -88,13 +167,13 @@ public:
 	AGridActor();
 
 	FIntVector2& GetHoveredTileIndex() {return HoveredTileIndex;};
+
+	void PlaceCharacterInGrid(const FIntVector2& TargetTile, ATacticalBattleCharacter* Character);
 	
 
 protected:
 	// Called when the game starts or when spawned
 	virtual void BeginPlay() override;
-
-	
 
 	UPROPERTY(EditDefaultsOnly)
 	TSoftObjectPtr<class UGridData> GridData{nullptr};
@@ -123,7 +202,7 @@ protected:
 	UFUNCTION()
 	void GetWalkableTilesInRange(const FIntVector2& StartIndex, const int MovementRange, TArray<FIntVector2>& OutRange, UPARAM(meta=(BitMask, BitMaskEnum = "/Script/TacticalRPG.EGridMovementType")) const uint8 UnitMovementType = static_cast<uint8>(EGridMovementType::Any), const int UnitJumpPower = INT_MAX );
 	UFUNCTION()
-	int CalculatePathingCost(TArray<FIntVector2>& Path, bool HinderedByTerrain) const;
+	int CalculatePathingCost(TArray<FIntVector2>& Path, bool bUnhinderedByTerrain) const;
 
 private:
 	TMap<FIntVector2, int> GridIndexToInstanceIndex{};
@@ -131,7 +210,7 @@ private:
 	UPROPERTY(VisibleInstanceOnly)
 	TMap<FIntVector2, UTileData*> TileDataMap{};
 	int GetTileGValueByIndex(const FIntVector2& TileIndex) const;
-	int GetTileMovementCost(const FIntVector2& TileIndex, bool bHinderedByTerrain) const;
+	int GetTileMovementCost(const FIntVector2& TileIndex, bool bUnhinderedByTerrain) const;
 	FIntVector2 GetLowestFValueTileIndex(const TArray<FIntVector2>& GroupToSearch) const;
 	
 
